@@ -33,11 +33,61 @@ service SignalingService {
 
 message SignalRequest {
   oneof request {
-    // Send a signal to another participant
-    WebRTCSignal signal = 1;
+    // Send a routed WebRTC signal (explicit routing envelope).
+    //
+    // Design note:
+    // - Server derives sender (user_id/device_id) from auth metadata.
+    // - Client MUST NOT rely on server trusting any `*_user_id` fields inside WebRTC payload.
+    // - Routing lives outside the WebRTC payload so the same payload types can be reused
+    //   for 1:1, multi-device, and (future) group calls without redefining webrtc.proto.
+    RoutedWebRtcSignal routed_signal = 1;
     // Keepalive ping (every 25 sec)
     SignalPing ping = 2;
   }
+}
+
+message RoutedWebRtcSignal {
+  // Raw WebRTC signaling payload (SDP/ICE/hangup/etc).
+  WebRTCSignal signal = 1;
+
+  // Where to deliver this signal.
+  //
+  // Required for initial Offer (the server otherwise cannot find the callee(s)).
+  // Optional for subsequent signals when server can route via call registry.
+  SignalRoute route = 2;
+}
+
+message SignalRoute {
+  oneof target {
+    // Send to a specific user (one or many devices).
+    UserTarget user = 1;
+
+    // Send to a specific device (multi-device precision routing).
+    DeviceTarget device = 2;
+
+    // Send to a group of users (future group call fanout).
+    GroupTarget group = 3;
+  }
+}
+
+message UserTarget {
+  string user_id = 1;
+
+  // If true: deliver to all currently connected devices for that user.
+  // If false: server may deliver to an arbitrary active device.
+  bool all_devices = 2;
+}
+
+message DeviceTarget {
+  string user_id = 1;
+  string device_id = 2;
+}
+
+message GroupTarget {
+  repeated string user_ids = 1;
+
+  // If true: deliver to all currently connected devices for each user.
+  bool all_devices = 2;
 }
 
 message SignalResponse {
